@@ -5,6 +5,8 @@
 #include <sstream>
 #include <vector>
 #include <array>
+#include <cstdlib>
+#include <ctime>
 
 // solo es para decorar
 #define red "\033[31m"
@@ -124,7 +126,7 @@ public:
             cout << blue << Bloque << RESET;
             for (int x = 0; x < N; ++x)
             {
-                cout << black << "[" << RESET << DISP[sq[y][x] + 1] << black << "]" << blue << Bloque << RESET;
+                cout << black << "[" << yellow << DISP[sq[y][x] + 1] << black << "]" << blue << Bloque << RESET;
             }
             cout << endl;
 
@@ -187,6 +189,12 @@ public:
 
         return false;
     }
+    bool isLegal(pair<int, int> &pos)
+    {
+        if (sq[pos.first][pos.second] == 0)
+            return true;
+        return false;
+    }
 
 private:
     // P1 or P2 to move
@@ -205,6 +213,17 @@ private:
 // how pieces are displayed ...
 // P1, empty, P2
 const array<char, 3> State::DISP = {{'o', '-', 'x'}};
+
+pair<int, int> agente_aleatorio(State &st)
+{
+    pair<int, int> pos;
+    do
+    {
+        pos.first = rand() % State::N;
+        pos.second = rand() % State::N;
+    } while (!st.isLegal(pos));
+    return pos;
+}
 
 int main()
 {
@@ -267,6 +286,7 @@ int main()
     //         cerr << "corrupt input: " << s << endl;
     //     }
     // }
+    srand(time(nullptr));
     State st;
     int winner = 0;
     for (int i = 0; i < 15; i++)
@@ -276,9 +296,27 @@ int main()
     cout << endl;
     cout << bold << "Hola, seleccione los ajentes" << green << "\nagente humano 1\nagente aleatorio: 2\nX: " << RESET;
     int agente1 = 0, agente2 = 0;
-    cin >> agente1;
+    do
+    {
+        cin >> agente1;
+        if (agente1 == 1 || agente1 == 2)
+        {
+            break;
+        }
+        cout << red << bold << "\nAgente no reconosido\n"
+             << RESET;
+    } while (true);
     cout << bold << green << "O: " << RESET;
-    cin >> agente2;
+    do
+    {
+        cin >> agente2;
+        if (agente2 == 1 || agente2 == 2)
+        {
+            break;
+        }
+        cout << red << bold << "\nAgente no reconosido\n"
+             << RESET;
+    } while (true);
 
     for (int i = 0; i < 15; i++)
     {
@@ -290,17 +328,28 @@ int main()
     {
         pair<int, int> move = {0, 0};
         st.print();
-        if (st.get_to_move() == State::P1)
+        auto player = st.get_to_move();
+        if (player == State::P1)
         {
             if (agente1 == 1)
             {
                 cout << bold << green << "\nindique (x y)\nJugador X: " << RESET << endl;
-                cin >> move.first >> move.second;
-                st.make_move(move.first, move.second);
+                do
+                {
+                    cin >> move.second >> move.first;
+                    if (move.first >= 0 && move.first <= 2 && move.second >= 0 && move.second <= 2 && st.isLegal(move))
+                    {
+                        st.make_move(move.second, move.first);
+                        break;
+                    }
+                    cout << red << bold << "\nMovimiento ilegal\n"
+                         << RESET;
+                } while (true);
             }
             else
             {
-                // movimiento aleatorio
+                move = agente_aleatorio(st);
+                st.make_move(move.second, move.first);
             }
         }
         else
@@ -308,12 +357,22 @@ int main()
             if (agente2 == 1)
             {
                 cout << bold << green << "indique (x y)\nJugador O: " << RESET << endl;
-                cin >> move.first >> move.second;
-                st.make_move(move.first, move.second);
+                do
+                {
+                    cin >> move.second >> move.first;
+                    if (move.first >= 0 && move.first <= 2 && move.second >= 0 && move.second <= 2 && st.isLegal(move))
+                    {
+                        st.make_move(move.second, move.first);
+                        break;
+                    }
+                    cout << red << bold << "\nMovimiento ilegal\n"
+                         << RESET;
+                } while (true);
             }
             else
             {
-                // movimiento aleatorio
+                move = agente_aleatorio(st);
+                st.make_move(move.second, move.first);
             }
         }
         for (int i = 0; i < 15; i++)
@@ -321,11 +380,20 @@ int main()
             cout << yellow << Bloque << RESET;
         }
         cout << endl;
-        if (st.isWin(st.get_to_move()))
+        if (st.isWin(player))
         {
-            winner = st.get_to_move();
+            st.print();
+            winner = player;
+            if (player == 1)
+            {
+                cout << green << bold << "Felicidades jugador: " << yellow << "X" << RESET << endl;
+            }
+            else
+            {
+                cout << green << bold << "Felicidades jugador: " << yellow << "O" << RESET << endl;
+            }
         }
-    } while (!st.full() && winner != 0);
-
-    cout << "gano\n";
+    } while (!st.full() && winner == 0);
+    if (st.full() && winner == 0)
+        cout << green << bold << "Lastima pero nadie gano :(" << RESET << endl;
 }
