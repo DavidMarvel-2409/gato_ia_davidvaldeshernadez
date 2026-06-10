@@ -195,6 +195,29 @@ public:
             return true;
         return false;
     }
+    vector<pair<int, int>> getMoves() const
+    {
+        vector<pair<int, int>> moves;
+        for (int y = 0; y < N; y++)
+        {
+            for (int x = 0; x < N; x++)
+            {
+                if (sq[y][x] == 0)
+                {
+                    moves.push_back({y, x});
+                }
+            }
+        }
+        return moves;
+    }
+    bool isTerminal()
+    {
+        return isWin(P1) || isWin(P2) || full();
+    }
+    Players getPlayer(int n)
+    {
+        return n == 1 ? P1 : P2;
+    }
 
 private:
     // P1 or P2 to move
@@ -214,6 +237,76 @@ private:
 // P1, empty, P2
 const array<char, 3> State::DISP = {{'o', '-', 'x'}};
 
+int evaluateMM(State &st)
+{
+    if (st.isWin(st.getPlayer(1)))
+        return 1;
+
+    if (st.isWin(st.getPlayer(2)))
+        return -1;
+
+    return 0;
+}
+
+int theMin(int a, int b)
+{
+    return a < b ? a : b;
+}
+int theMax(int a, int b)
+{
+    return a > b ? a : b;
+}
+
+int minmax(State &st)
+{
+    int best = 0;
+    if (st.isTerminal())
+        return evaluateMM(st);
+    auto player = st.get_to_move();
+    if (player == st.getPlayer(1))
+    {
+        best = -999999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            best = theMax(best, minmax(jr));
+        }
+        return best;
+    }
+    else
+    {
+        best = 999999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            best = theMin(best, minmax(jr));
+        }
+        return best;
+    }
+}
+
+int negamax(State &st)
+{
+    if (st.isTerminal())
+    {
+        auto player = st.get_to_move();
+        if (st.isWin(-player))
+            return -1;
+        return 0;
+    }
+    int best = -99999;
+    for (auto move : st.getMoves())
+    {
+        State jr = st;
+        jr.make_move(move.second, move.first);
+        int score = -negamax(jr);
+        best = theMax(best, score);
+    }
+    return best;
+}
+
 pair<int, int> agente_aleatorio(State &st)
 {
     pair<int, int> pos;
@@ -225,67 +318,60 @@ pair<int, int> agente_aleatorio(State &st)
     return pos;
 }
 
+pair<int, int> agente_minmax(State &st)
+{
+    pair<int, int> bestMove;
+    int bestValor;
+    if (st.get_to_move() == st.getPlayer(1))
+        bestValor = -99999;
+    else
+        bestValor = 99999;
+    for (auto move : st.getMoves())
+    {
+        State jr = st;
+        jr.make_move(move.second, move.first);
+        int value = minmax(jr);
+        if (st.get_to_move() == st.getPlayer(1))
+        {
+            if (value > bestValor)
+            {
+                bestValor = value;
+                bestMove = move;
+            }
+        }
+        else
+        {
+            if (value < bestValor)
+            {
+                bestValor = value;
+                bestMove = move;
+            }
+        }
+    }
+    return bestMove;
+}
+
+pair<int, int> agente_negamax(State &st)
+{
+    pair<int, int> bestMove;
+    int bestValor = -99999;
+    for (auto move : st.getMoves())
+    {
+        State jr = st;
+        jr.make_move(move.second, move.first);
+        int valor = -negamax(jr);
+        if (valor > bestValor)
+        {
+            bestValor = valor;
+            bestMove = move;
+        }
+    }
+    return bestMove;
+}
+
 int main()
 {
-    // std::vector<string> boards{
-    //     "---
-    //  ---
-    //  ---", // x draws with (0,0)
 
-    //     "---
-    //  -o-
-    //  ---", // x draws with (0,0)
-
-    //     "---
-    //  --o
-    //  ---", // x draws with (0,1)
-
-    //     "-oo
-    //  ooo
-    //  ooo", // a player already won
-
-    //     "xox
-    //  oxo
-    //  oxo", // draw
-
-    //     "--o
-    //  -oo
-    //  ---", // x loses
-
-    //     "oxo
-    //  xx-
-    //  oox", // x wins with (2,1)
-
-    //     "-xo
-    //  oox
-    //  xoo", // x draws with (0,0)
-
-    //     "---
-    //  -x-
-    //  ---" // x wins with (0,0)
-    // };
-
-    // for (const string &s : boards)
-    // {
-    //     // construct state from string
-    //     // also catch exception and print
-    //     // error message
-    //     try
-    //     {
-    //         State st;
-    //         st.set(s);
-    //         cout << green << "Before move" << RESET << endl;
-    //         st.print();
-    //         cout << green << "After move. Status: " << st.make_move(0, 0) << RESET << endl;
-    //         st.print();
-    //         cout << yellow << "===============================" << RESET << endl;
-    //         cout << endl;
-    //     }
-    //     catch (InputException &e)
-    //     {
-    //         cerr << "corrupt input: " << s << endl;
-    //     }
-    // }
     srand(time(nullptr));
     State st;
     int winner = 0;
@@ -294,45 +380,45 @@ int main()
         cout << yellow << Bloque << RESET;
     }
     cout << endl;
-    cout << bold << "Hola, seleccione los ajentes" << green << "\nagente humano 1\nagente aleatorio: 2\nX: " << RESET;
+    cout << bold << "Hola, seleccione los ajentes" << green << "\nagente humano 1\nagente aleatorio: 2\nagente MinMax: 3\nagente negamax: 4\nX: " << RESET;
     int agente1 = 0, agente2 = 0;
     do
     {
         cin >> agente1;
-        if (agente1 == 1 || agente1 == 2)
+        if (agente1 >= 1 && agente1 <= 4)
         {
             break;
         }
-        cout << red << bold << "\nAgente no reconosido\n"
-             << RESET;
+        cout << red << bold << "\nAgente no reconosido" << RESET << endl;
+        cin.clear();
     } while (true);
     cout << bold << green << "O: " << RESET;
     do
     {
         cin >> agente2;
-        if (agente2 == 1 || agente2 == 2)
+        if (agente2 >= 1 && agente2 <= 4)
         {
             break;
         }
-        cout << red << bold << "\nAgente no reconosido\n"
-             << RESET;
+        cout << red << bold << "\nAgente no reconosido" << RESET << endl;
+        cin.clear();
     } while (true);
 
     for (int i = 0; i < 15; i++)
     {
         cout << yellow << Bloque << RESET;
     }
-    cout << bold << "\nPerfecto, ahora comenzamos\n"
-         << RESET;
+    cout << bold << "\nPerfecto, ahora comenzamos" << RESET << endl;
     do
     {
         pair<int, int> move = {0, 0};
         st.print();
         auto player = st.get_to_move();
-        if (player == State::P1)
+        if (player == st.getPlayer(1))
         {
-            if (agente1 == 1)
+            switch (agente1)
             {
+            case 1:
                 cout << bold << green << "\nindique (x y)\nJugador X: " << RESET << endl;
                 do
                 {
@@ -342,21 +428,30 @@ int main()
                         st.make_move(move.second, move.first);
                         break;
                     }
-                    cout << red << bold << "\nMovimiento ilegal\n"
-                         << RESET;
+                    cout << red << bold << "\nMovimiento ilegal" << RESET << endl;
+                    cin.clear();
                 } while (true);
-            }
-            else
-            {
+                break;
+            case 2:
                 move = agente_aleatorio(st);
                 st.make_move(move.second, move.first);
+                break;
+            case 3:
+                move = agente_minmax(st);
+                st.make_move(move.second, move.first);
+                break;
+            case 4:
+                move = agente_negamax(st);
+                st.make_move(move.second, move.first);
+                break;
             }
         }
         else
         {
-            if (agente2 == 1)
+            switch (agente2)
             {
-                cout << bold << green << "indique (x y)\nJugador O: " << RESET << endl;
+            case 1:
+                cout << bold << green << "\nindique (x y)\nJugador X: " << RESET << endl;
                 do
                 {
                     cin >> move.second >> move.first;
@@ -365,14 +460,22 @@ int main()
                         st.make_move(move.second, move.first);
                         break;
                     }
-                    cout << red << bold << "\nMovimiento ilegal\n"
-                         << RESET;
+                    cout << red << bold << "\nMovimiento ilegal" << RESET << endl;
+                    cin.clear();
                 } while (true);
-            }
-            else
-            {
+                break;
+            case 2:
                 move = agente_aleatorio(st);
                 st.make_move(move.second, move.first);
+                break;
+            case 3:
+                move = agente_minmax(st);
+                st.make_move(move.second, move.first);
+                break;
+            case 4:
+                move = agente_negamax(st);
+                st.make_move(move.second, move.first);
+                break;
             }
         }
         for (int i = 0; i < 15; i++)
@@ -394,6 +497,14 @@ int main()
             }
         }
     } while (!st.full() && winner == 0);
+
     if (st.full() && winner == 0)
         cout << green << bold << "Lastima pero nadie gano :(" << RESET << endl;
+
+    for (int i = 0; i < 15; i++)
+    {
+        cout << yellow << Bloque << RESET;
+    }
+    cout << endl;
+    st.print();
 }
