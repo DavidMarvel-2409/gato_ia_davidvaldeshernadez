@@ -7,6 +7,9 @@
 #include <array>
 #include <cstdlib>
 #include <ctime>
+#include <queue>
+#include <chrono>
+#include <sys/resource.h>
 
 // solo es para decorar
 #define red "\033[31m"
@@ -18,6 +21,7 @@
 #define bold "\033[1m"
 #define RESET "\033[0m"
 #define Bloque "[+]"
+#define dell "\033[1A\033[2K"
 
 using namespace std;
 
@@ -36,18 +40,20 @@ public:
         P1 = 1
     };
     // edge length
-    static const int N = 3;
+    // static const int N = 3;
+    int M, N, K;
     // number of squares
-    static const int SIZE = N * N;
+    // static const int SIZE = N * N;
+    vector<vector<signed char>> sq;
     // how pieces are displayed ... see below
     // P1, empty, P2
     static const array<char, 3> DISP;
 
     // initialize empty board
     // P1 to move
-    State()
+    State(int m, int n, int k) : M(m), N(n), K(k)
     {
-        sq = {{}};
+        sq.assign(M, vector<signed char>(N, 0));
         to_move = P1;
         filled = 0;
     }
@@ -55,7 +61,7 @@ public:
     // return true if board is full
     bool full() const
     {
-        return filled >= SIZE;
+        return filled >= M * N;
     }
 
     // initialize state from string (P1 to move)
@@ -121,7 +127,7 @@ public:
             cout << blue << Bloque << RESET;
         }
         cout << endl;
-        for (int y = 0; y < N; ++y)
+        for (int y = 0; y < M; ++y)
         {
             cout << blue << Bloque << RESET;
             for (int x = 0; x < N; ++x)
@@ -147,7 +153,7 @@ public:
     // pre-condition: x, y within range
     bool make_move(int x, int y)
     {
-        assert(x >= 0 && x < N && y >= 0 && y < N);
+        assert(x >= 0 && x < N && y >= 0 && y < M);
         auto &c = sq[y][x];
         if (c)
         {
@@ -168,25 +174,32 @@ public:
 
     bool isWin(int p)
     {
-        // hay 8 posibles formas de ganar en un 3*3
 
-        if (sq[0][0] == p && sq[0][1] == p && sq[0][2] == p)
-            return true;
-        else if (sq[1][0] == p && sq[1][1] == p && sq[1][2] == p)
-            return true;
-        else if (sq[2][0] == p && sq[2][1] == p && sq[2][2] == p)
-            return true;
-        else if (sq[0][0] == p && sq[1][0] == p && sq[2][0] == p)
-            return true;
-        else if (sq[0][1] == p && sq[1][1] == p && sq[2][1] == p)
-            return true;
-        else if (sq[0][2] == p && sq[1][2] == p && sq[2][2] == p)
-            return true;
-        else if (sq[0][0] == p && sq[1][1] == p && sq[2][2] == p)
-            return true;
-        else if (sq[0][2] == p && sq[1][1] == p && sq[2][0] == p)
-            return true;
+        int dx[] = {1, 0, 1, 1};
+        int dy[] = {0, 1, 1, -1};
 
+        for (int y = 0; y < M; y++)
+        {
+            for (int x = 0; x < N; x++)
+            {
+                if (sq[y][x] != p)
+                    continue;
+                for (int d = 0; d < 4; d++)
+                {
+                    int count = 1;
+                    for (int s = 1; s < K; s++)
+                    {
+                        int ny = y + dy[d] * s;
+                        int nx = x + dx[d] * s;
+                        if (ny < 0 || ny >= M || nx < 0 || nx >= N || sq[ny][nx] != p)
+                            break;
+                        count++;
+                    }
+                    if (count >= K)
+                        return true;
+                }
+            }
+        }
         return false;
     }
     bool isLegal(pair<int, int> &pos)
@@ -198,7 +211,7 @@ public:
     vector<pair<int, int>> getMoves() const
     {
         vector<pair<int, int>> moves;
-        for (int y = 0; y < N; y++)
+        for (int y = 0; y < M; y++)
         {
             for (int x = 0; x < N; x++)
             {
@@ -227,7 +240,7 @@ private:
     // stores P1,0,P2 values
     // bounds are checked in debug mode
     // and sq[y][x] = 0 works
-    array<array<signed char, N>, N> sq;
+    // array<array<signed char, N>, N> sq;
 
     // number of non-empty squares
     int filled;
@@ -237,13 +250,46 @@ private:
 // P1, empty, P2
 const array<char, 3> State::DISP = {{'o', '-', 'x'}};
 
+int heuristica(State &st)
+{
+    int score = 0,
+        dx[] = {1, 0, 1, 1},
+        dy[] = {0, 1, 1, -1};
+    for (int y = 0; y < st.M; y++)
+    {
+        for (int x = 0; x < st.N; x++)
+        {
+            for (int d = 0; d < 4; d++)
+            {
+                int countP1 = 0, countP2 = 0;
+                for (int s = 0; s < st.K; s++)
+                {
+                    int ny = y + dy[d] * s,
+                        nx = x + dx[d] * s;
+                    if (ny < 0 || ny >= st.M || nx < 0 || nx >= st.N)
+                        break;
+                    if (st.sq[ny][nx] == st.getPlayer(1))
+                        countP1++;
+                    else if (st.sq[ny][nx] == st.getPlayer(2))
+                        countP2++;
+                }
+                if (countP1 > 0 && countP2 == 0)
+                    score += countP1 * countP1;
+                else if (countP2 > 0 && countP1 == 0)
+                    score -= countP2 * countP2;
+            }
+        }
+    }
+    return score;
+}
+
 int evaluateMM(State &st)
 {
     if (st.isWin(st.getPlayer(1)))
-        return 1;
+        return 100000;
 
     if (st.isWin(st.getPlayer(2)))
-        return -1;
+        return -100000;
 
     return 0;
 }
@@ -257,11 +303,18 @@ int theMax(int a, int b)
     return a > b ? a : b;
 }
 
-int minmax(State &st)
+int minmax(State &st, int depth, int &nodes)
 {
+    nodes++;
+    // if (nodes % 100000 == 0)
+    // {
+    //     cout << "Nodos explorados: " << nodes << endl;
+    // }
     int best = 0;
     if (st.isTerminal())
         return evaluateMM(st);
+    if (depth == 0)
+        return heuristica(st);
     auto player = st.get_to_move();
     if (player == st.getPlayer(1))
     {
@@ -270,7 +323,7 @@ int minmax(State &st)
         {
             State jr = st;
             jr.make_move(move.second, move.first);
-            best = theMax(best, minmax(jr));
+            best = theMax(best, minmax(jr, depth - 1, nodes));
         }
         return best;
     }
@@ -281,45 +334,106 @@ int minmax(State &st)
         {
             State jr = st;
             jr.make_move(move.second, move.first);
-            best = theMin(best, minmax(jr));
+            best = theMin(best, minmax(jr, depth - 1, nodes));
         }
         return best;
     }
 }
 
-int negamax(State &st)
+int negamax(State &st, int depth, int &nodes)
 {
+    nodes++;
     if (st.isTerminal())
     {
         auto player = st.get_to_move();
         if (st.isWin(-player))
-            return -1;
+            return -100000;
         return 0;
+    }
+    if (depth == 0)
+    {
+        int h = heuristica(st);
+        return st.get_to_move() == st.getPlayer(1) ? h : -h;
     }
     int best = -99999;
     for (auto move : st.getMoves())
     {
         State jr = st;
         jr.make_move(move.second, move.first);
-        int score = -negamax(jr);
+        int score = -negamax(jr, depth - 1, nodes);
         best = theMax(best, score);
     }
     return best;
 }
 
+int alphabeta(State &st, int alpha, int beta, int depth, int &nodes, int &podas)
+{
+    nodes++;
+    if (st.isTerminal())
+        return evaluateMM(st);
+    if (depth == 0)
+        return heuristica(st);
+    auto player = st.get_to_move();
+
+    if (player == st.getPlayer(1))
+    {
+        int best = -999999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            int value = alphabeta(jr, alpha, beta, depth - 1, nodes, podas);
+            best = theMax(best, value);
+            alpha = theMax(alpha, best);
+
+            if (alpha >= beta)
+            {
+                podas++;
+                break;
+            }
+        }
+        return best;
+    }
+    else
+    {
+        int best = 99999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            int value = alphabeta(jr, alpha, beta, depth - 1, nodes, podas);
+            best = theMin(best, value);
+            beta = theMin(beta, best);
+
+            if (alpha >= beta)
+            {
+                podas++;
+                break;
+            }
+        }
+        return best;
+    }
+}
+
 pair<int, int> agente_aleatorio(State &st)
 {
+    auto inicio = chrono::high_resolution_clock::now();
     pair<int, int> pos;
     do
     {
-        pos.first = rand() % State::N;
-        pos.second = rand() % State::N;
+        pos.first = rand() % st.M;
+        pos.second = rand() % st.N;
     } while (!st.isLegal(pos));
+    auto fin = chrono::high_resolution_clock::now();
+    double ms = chrono::duration<double, milli>(fin - inicio).count();
+    cout << pink << "tiempo de agente aleatorio: " << ms << " ms" << RESET << endl;
     return pos;
 }
 
-pair<int, int> agente_minmax(State &st)
+pair<int, int> agente_minmax(State &st, int H)
 {
+    auto inicio = chrono::high_resolution_clock::now();
+    int nodes = 0;
     pair<int, int> bestMove;
     int bestValor;
     if (st.get_to_move() == st.getPlayer(1))
@@ -330,7 +444,7 @@ pair<int, int> agente_minmax(State &st)
     {
         State jr = st;
         jr.make_move(move.second, move.first);
-        int value = minmax(jr);
+        int value = minmax(jr, H - 1, nodes);
         if (st.get_to_move() == st.getPlayer(1))
         {
             if (value > bestValor)
@@ -348,144 +462,203 @@ pair<int, int> agente_minmax(State &st)
             }
         }
     }
+    auto fin = chrono::high_resolution_clock::now();
+    double ms = chrono::duration<double, milli>(fin - inicio).count();
+    cout << pink << "tiempo de agente minmax: " << ms << " ms" << RESET << endl;
+    cout << pink << "Nodos recorridos: " << nodes << RESET << endl;
+    cout << pink << "profundidad de busqeueda: " << H << RESET << endl;
     return bestMove;
 }
 
-pair<int, int> agente_negamax(State &st)
+pair<int, int> agente_negamax(State &st, int H)
 {
+    int nodes = 0;
+    auto inicio = chrono::high_resolution_clock::now();
     pair<int, int> bestMove;
     int bestValor = -99999;
     for (auto move : st.getMoves())
     {
         State jr = st;
         jr.make_move(move.second, move.first);
-        int valor = -negamax(jr);
+        int valor = -negamax(jr, H - 1, nodes);
         if (valor > bestValor)
         {
             bestValor = valor;
             bestMove = move;
         }
     }
+    auto fin = chrono::high_resolution_clock::now();
+    double ms = chrono::duration<double, milli>(fin - inicio).count();
+    cout << pink << "tiempo de agente negamax: " << ms << " ms" << RESET << endl;
+    cout << pink << "Nodos recorridos: " << nodes << RESET << endl;
+    cout << pink << "profundidad de busqueda: " << H << RESET << endl;
     return bestMove;
 }
 
-int main()
+pair<int, int> agente_alphabeta(State &st, int H)
 {
+    auto inicio = chrono::high_resolution_clock::now();
+    int nodes = 0, podas = 0;
+    pair<int, int> bestMove;
+    int alpha = -99999;
+    int beta = 99999;
+    auto player = st.get_to_move();
+    if (player == st.getPlayer(1))
+    {
+        int bestvalor = -99999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            int value = alphabeta(jr, alpha, beta, H - 1, nodes, podas);
+            if (value > bestvalor)
+            {
+                bestvalor = value;
+                bestMove = move;
+            }
+            alpha = theMax(alpha, bestvalor);
+        }
+    }
+    else
+    {
+        int bestvalor = 99999;
+        for (auto move : st.getMoves())
+        {
+            State jr = st;
+            jr.make_move(move.second, move.first);
+            int value = alphabeta(jr, alpha, beta, H - 1, nodes, podas);
+            if (value < bestvalor)
+            {
+                bestvalor = value;
+                bestMove = move;
+            }
+            beta = theMin(beta, bestvalor);
+        }
+    }
+    auto fin = chrono::high_resolution_clock::now();
+    double ms = chrono::duration<double, milli>(fin - inicio).count();
+    cout << pink << "tiempo de agente alphabeta: " << ms << " ms" << RESET << endl;
+    cout << pink << "Nodos recorridos: " << nodes << RESET << endl;
+    cout << pink << "Podas: " << podas << RESET << endl;
+    cout << pink << "profundidad de busqueda: " << H << RESET << endl;
+    return bestMove;
+}
 
+int main(int argc, char *argv[])
+{
+    int M = atoi(argv[1]),
+        N = atoi(argv[2]),
+        K = atoi(argv[3]),
+        H = atoi(argv[4]),
+        ag1 = atoi(argv[5]),
+        ag2 = atoi(argv[6]);
+
+    struct rusage usage;
     srand(time(nullptr));
-    State st;
-    int winner = 0;
-    for (int i = 0; i < 15; i++)
-    {
-        cout << yellow << Bloque << RESET;
-    }
-    cout << endl;
-    cout << bold << "Hola, seleccione los ajentes" << green << "\nagente humano 1\nagente aleatorio: 2\nagente MinMax: 3\nagente negamax: 4\nX: " << RESET;
-    int agente1 = 0, agente2 = 0;
-    do
-    {
-        cin >> agente1;
-        if (agente1 >= 1 && agente1 <= 4)
-        {
-            break;
-        }
-        cout << red << bold << "\nAgente no reconosido" << RESET << endl;
-        cin.clear();
-    } while (true);
-    cout << bold << green << "O: " << RESET;
-    do
-    {
-        cin >> agente2;
-        if (agente2 >= 1 && agente2 <= 4)
-        {
-            break;
-        }
-        cout << red << bold << "\nAgente no reconosido" << RESET << endl;
-        cin.clear();
-    } while (true);
-
-    for (int i = 0; i < 15; i++)
-    {
-        cout << yellow << Bloque << RESET;
-    }
-    cout << bold << "\nPerfecto, ahora comenzamos" << RESET << endl;
-    do
+    State st(M, N, K);
+    int winner = 0, turnos = 0;
+    while (!st.full() && winner == 0)
     {
         pair<int, int> move = {0, 0};
-        st.print();
         auto player = st.get_to_move();
         if (player == st.getPlayer(1))
         {
-            switch (agente1)
+            switch (ag1)
             {
-            case 1:
-                cout << bold << green << "\nindique (x y)\nJugador X: " << RESET << endl;
+            case 0:
+                st.print();
+                cout << bold << green << "indique (fila columna)\nJugador: " << RESET << endl;
                 do
                 {
-                    cin >> move.second >> move.first;
-                    if (move.first >= 0 && move.first <= 2 && move.second >= 0 && move.second <= 2 && st.isLegal(move))
+                    cin >> move.first >> move.second;
+                    if (move.first >= 0 && move.first < st.M && move.second >= 0 && move.second < st.N && st.isLegal(move))
                     {
                         st.make_move(move.second, move.first);
+                        turnos++;
                         break;
                     }
-                    cout << red << bold << "\nMovimiento ilegal" << RESET << endl;
+                    cout << red << bold << "Movimiento ilegal" << RESET << endl;
                     cin.clear();
+                    cin.ignore(999, '\n');
                 } while (true);
                 break;
-            case 2:
+            case 1:
+                cout << yellow << "Ejecutando agente aleatorio" << RESET << endl;
                 move = agente_aleatorio(st);
                 st.make_move(move.second, move.first);
+                turnos++;
+                break;
+            case 2:
+                cout << yellow << "Ejecutando agente minmax" << RESET << endl;
+                move = agente_minmax(st, H);
+                st.make_move(move.second, move.first);
+                turnos++;
                 break;
             case 3:
-                move = agente_minmax(st);
+                cout << yellow << "Ejecutando agente negamax" << RESET << endl;
+                move = agente_negamax(st, H);
                 st.make_move(move.second, move.first);
+                turnos++;
                 break;
             case 4:
-                move = agente_negamax(st);
+                cout << yellow << "Ejecutando agente alphabeta" << RESET << endl;
+                move = agente_alphabeta(st, H);
                 st.make_move(move.second, move.first);
+                turnos++;
                 break;
             }
         }
         else
         {
-            switch (agente2)
+            switch (ag2)
             {
-            case 1:
-                cout << bold << green << "\nindique (x y)\nJugador X: " << RESET << endl;
+            case 0:
+                st.print();
+                cout << bold << green << "indique (fila columna)\nJugador: " << RESET << endl;
                 do
                 {
-                    cin >> move.second >> move.first;
-                    if (move.first >= 0 && move.first <= 2 && move.second >= 0 && move.second <= 2 && st.isLegal(move))
+                    cin >> move.first >> move.second;
+                    if (move.first >= 0 && move.first < st.M && move.second >= 0 && move.second < st.N && st.isLegal(move))
                     {
                         st.make_move(move.second, move.first);
+                        turnos++;
                         break;
                     }
-                    cout << red << bold << "\nMovimiento ilegal" << RESET << endl;
+                    cout << red << bold << "Movimiento ilegal" << RESET << endl;
                     cin.clear();
+                    cin.ignore(999, '\n');
                 } while (true);
                 break;
-            case 2:
+            case 1:
+                cout << yellow << "Ejecutando agente aleatorio" << RESET << endl;
                 move = agente_aleatorio(st);
                 st.make_move(move.second, move.first);
+                turnos++;
+                break;
+            case 2:
+                cout << yellow << "Ejecutando agente minmax" << RESET << endl;
+                move = agente_minmax(st, H);
+                st.make_move(move.second, move.first);
+                turnos++;
                 break;
             case 3:
-                move = agente_minmax(st);
+                cout << yellow << "Ejecutando agente negamax" << RESET << endl;
+                move = agente_negamax(st, H);
                 st.make_move(move.second, move.first);
+                turnos++;
                 break;
             case 4:
-                move = agente_negamax(st);
+                cout << yellow << "Ejecutando agente alphabeta" << RESET << endl;
+                move = agente_alphabeta(st, H);
                 st.make_move(move.second, move.first);
+                turnos++;
                 break;
             }
         }
-        for (int i = 0; i < 15; i++)
-        {
-            cout << yellow << Bloque << RESET;
-        }
-        cout << endl;
+        if (ag1 == 0 || ag2 == 0)
+            st.print();
         if (st.isWin(player))
         {
-            st.print();
             winner = player;
             if (player == 1)
             {
@@ -496,15 +669,18 @@ int main()
                 cout << green << bold << "Felicidades jugador: " << yellow << "O" << RESET << endl;
             }
         }
-    } while (!st.full() && winner == 0);
-
-    if (st.full() && winner == 0)
-        cout << green << bold << "Lastima pero nadie gano :(" << RESET << endl;
-
+    }
+    cout << endl;
     for (int i = 0; i < 15; i++)
     {
         cout << yellow << Bloque << RESET;
     }
-    cout << endl;
+    cout << endl
+         << endl;
     st.print();
+    if (st.full() && winner == 0)
+        cout << green << bold << "Lastima pero nadie gano :(" << RESET << endl;
+    cout << pink << "Numero de turnos: " << turnos << RESET << endl;
+    getrusage(RUSAGE_SELF, &usage);
+    cout << pink << "Memoria usada: " << usage.ru_maxrss << " KB" << RESET << endl;
 }
